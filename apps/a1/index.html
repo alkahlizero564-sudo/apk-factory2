@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>آلة حاسبة علمية</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{height:100%}
+body{margin:0;background:#0f172a;color:#e2e8f0;font-family:system-ui,sans-serif;display:flex;flex-direction:column;height:100vh;height:100dvh}
+.top{display:flex;justify-content:space-between;align-items:center;padding:8px 12px}
+.top b{font-size:16px;color:#a5b4fc}
+.top button{background:#1e293b;color:#e2e8f0;border:0;border-radius:10px;padding:6px 12px;font-size:14px}
+.disp{padding:6px 16px 10px;text-align:left;direction:ltr;min-height:96px}
+#expr{font-size:26px;word-break:break-all;min-height:34px;color:#cbd5e1}
+#res{font-size:38px;font-weight:700;color:#fff;min-height:48px;word-break:break-all}
+#res.err{color:#fb7185}
+.pads{flex:1;display:flex;flex-direction:column;gap:8px;padding:8px;min-height:0}
+.grid{display:grid;gap:6px;direction:ltr}
+.sci{grid-template-columns:repeat(5,1fr);flex:5}
+.num{grid-template-columns:repeat(4,1fr);flex:6}
+.grid button{border:0;border-radius:12px;font-size:17px;color:#e2e8f0;background:#1e293b;padding:0;min-height:0}
+.grid button:active{filter:brightness(1.4)}
+.sci button{font-size:15px;background:#0f3a4a}
+.sci button.d{background:#7f1d1d}
+.num button{font-size:24px;background:#1e293b}
+.num button.o{background:#334155;color:#a5b4fc}
+.num button.eq{background:#6366f1;color:#fff}
+#hist{position:fixed;inset:0;background:#0f172ae6;display:none;flex-direction:column;padding:16px;direction:rtl;z-index:5}
+#hist.on{display:flex}
+#hist .bar{display:flex;justify-content:space-between;margin-bottom:10px}
+#hist button{background:#1e293b;color:#e2e8f0;border:0;border-radius:10px;padding:8px 14px}
+#hl{overflow:auto;flex:1}
+.h{background:#1e293b;border-radius:10px;padding:10px;margin-bottom:8px;direction:ltr;text-align:left}
+.h small{color:#94a3b8;display:block}
+.h span{font-size:20px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="top">
+  <b>الآلة الحاسبة العلمية</b>
+  <button onclick="openHist()">السجل</button>
+</div>
+<div class="disp"><div id="expr">0</div><div id="res"></div></div>
+<div class="pads">
+  <div class="grid sci" id="sci"></div>
+  <div class="grid num" id="num"></div>
+</div>
+<div id="hist">
+  <div class="bar"><b>السجل</b><span><button onclick="clearHist()">مسح</button> <button onclick="closeHist()">إغلاق</button></span></div>
+  <div id="hl"></div>
+</div>
+<script>
+var expr = '', deg = true, ans = 0, justEq = false, hist = [];
+try { hist = JSON.parse(localStorage.getItem('calc_h') || '[]'); } catch (e) {}
+function $(id) { return document.getElementById(id); }
+
+var S = [
+  ['Deg','DEG',''],['AC','AC','d'],['⌫','DEL','d'],['(','(',''],[')',')',''],
+  ['sin','sin(',''],['cos','cos(',''],['tan','tan(',''],['ln','ln(',''],['log','log(',''],
+  ['sin⁻¹','asin(',''],['cos⁻¹','acos(',''],['tan⁻¹','atan(',''],['√','√(',''],['x²','^2',''],
+  ['xʸ','^',''],['x³','^3',''],['n!','!',''],['π','π',''],['e','e',''],
+  ['%','%',''],['Ans','Ans',''],['1/x','1/(',''],['|x|','abs(',''],['10ˣ','10^(','']
+];
+var N = [
+  ['7','7',''],['8','8',''],['9','9',''],['÷','÷','o'],
+  ['4','4',''],['5','5',''],['6','6',''],['×','×','o'],
+  ['1','1',''],['2','2',''],['3','3',''],['−','−','o'],
+  ['0','0',''],['.','.',''],['=','EQ','eq'],['+','+','o']
+];
+function build(id, list) {
+  var box = $(id);
+  list.forEach(function (b) {
+    var el = document.createElement('button');
+    el.textContent = b[0];
+    el.className = b[2];
+    if (b[1] === 'DEG') el.id = 'degBtn';
+    el.onclick = function () { press(b[1]); };
+    box.appendChild(el);
+  });
+}
+build('sci', S); build('num', N);
+
+function press(a) {
+  if (a === 'AC') { expr = ''; justEq = false; }
+  else if (a === 'DEL') { del(); }
+  else if (a === 'DEG') { deg = !deg; $('degBtn').textContent = deg ? 'Deg' : 'Rad'; }
+  else if (a === 'EQ') { equals(); return; }
+  else { add(a); }
+  render();
+}
+function add(t) {
+  if (justEq) {
+    if (/^[0-9.πeA-Za-z√(]/.test(t)) expr = '';
+    justEq = false;
+  }
+  expr += t;
+}
+function del() {
+  expr = expr.replace(/(asin\(|acos\(|atan\(|sin\(|cos\(|tan\(|ln\(|log\(|abs\(|√\(|Ans|.)$/, '');
+  justEq = false;
+}
+
+function tokenize(s) {
+  var t = [], i = 0, m, r;
+  while (i < s.length) {
+    var c = s[i];
+    if (c === ' ') { i++; continue; }
+    r = s.slice(i);
+    if ((m = /^(\d+\.?\d*|\.\d+)(e[+-]?\d+)?/i.exec(r))) { t.push({k:'n', v:parseFloat(m[0])}); i += m[0].length; continue; }
+    if ((m = /^(asin|acos|atan|sin|cos|tan|ln|log|sqrt|abs)/.exec(r))) { t.push({k:'f', v:m[0]}); i += m[0].length; continue; }
+    if (r.indexOf('Ans') === 0) { t.push({k:'c', v:'Ans'}); i += 3; continue; }
+    if (c === '√') { t.push({k:'f', v:'sqrt'}); i++; continue; }
+    if (c === 'π' || c === 'e') { t.push({k:'c', v:c}); i++; continue; }
+    if ('+-−×*÷/^()!%'.indexOf(c) >= 0) {
+      var v = c === '−' ? '-' : c === '×' ? '*' : c === '÷' ? '/' : c;
+      t.push({k:'o', v:v}); i++; continue;
+    }
+    throw 0;
+  }
+  return t;
+}
+function fact(n) {
+  if (n < 0 || n !== Math.floor(n) || n > 170) throw 0;
+  var r = 1; for (var i = 2; i <= n; i++) r *= i; return r;
+}
+function fix(v) { return Math.abs(v) < 1e-12 ? 0 : v; }
+function fn(n, x) {
+  var rad = deg ? x * Math.PI / 180 : x;
+  var back = function (v) { return deg ? v * 180 / Math.PI : v; };
+  switch (n) {
+    case 'sin': return fix(Math.sin(rad));
+    case 'cos': return fix(Math.cos(rad));
+    case 'tan':
+      if (deg && Math.abs(x % 180) === 90) throw 0;
+      return fix(Math.tan(rad));
+    case 'asin': return back(Math.asin(x));
+    case 'acos': return back(Math.acos(x));
+    case 'atan': return back(Math.atan(x));
+    case 'ln': return Math.log(x);
+    case 'log': return Math.log10(x);
+    case 'sqrt': return Math.sqrt(x);
+    case 'abs': return Math.abs(x);
+  }
+  throw 0;
+}
+function calc(s) {
+  var tk = tokenize(s), p = 0;
+  if (!tk.length) throw 0;
+  function peek() { return tk[p]; }
+  function next() { return tk[p++]; }
+  function isOp(v) { return peek() && peek().k === 'o' && peek().v === v; }
+  function starts() {
+    var t = peek();
+    return t && (t.k === 'n' || t.k === 'c' || t.k === 'f' || (t.k === 'o' && t.v === '('));
+  }
+  function expression() {
+    var a = term();
+    while (isOp('+') || isOp('-')) { var o = next().v, b = term(); a = o === '+' ? a + b : a - b; }
+    return a;
+  }
+  function term() {
+    var a = unary();
+    while (true) {
+      if (isOp('*') || isOp('/')) { var o = next().v, b = unary(); a = o === '*' ? a * b : a / b; }
+      else if (starts()) { a *= unary(); }
+      else break;
+    }
+    return a;
+  }
+  function unary() {
+    if (isOp('-')) { next(); return -unary(); }
+    if (isOp('+')) { next(); return unary(); }
+    return power();
+  }
+  function power() {
+    var b = postfix();
+    if (isOp('^')) { next(); return Math.pow(b, unary()); }
+    return b;
+  }
+  function postfix() {
+    var a = primary();
+    while (true) {
+      if (isOp('!')) { next(); a = fact(a); }
+      else if (isOp('%')) { next(); a = a / 100; }
+      else break;
+    }
+    return a;
+  }
+  function primary() {
+    var t = next();
+    if (!t) throw 0;
+    if (t.k === 'n') return t.v;
+    if (t.k === 'c') return t.v === 'π' ? Math.PI : t.v === 'e' ? Math.E : ans;
+    if (t.k === 'f') {
+      if (!isOp('(')) throw 0;
+      next();
+      var a = expression();
+      if (isOp(')')) next();
+      return fn(t.v, a);
+    }
+    if (t.k === 'o' && t.v === '(') {
+      var x = expression();
+      if (isOp(')')) next();
+      return x;
+    }
+    throw 0;
+  }
+  var v = expression();
+  if (p < tk.length) throw 0;
+  return v;
+}
+function fmt(v) {
+  if (typeof v !== 'number' || !isFinite(v)) throw 0;
+  return String(parseFloat(v.toPrecision(12)));
+}
+
+function render() {
+  $('expr').textContent = expr || '0';
+  var el = $('res'), pv = '';
+  el.className = '';
+  try {
+    if (expr && !/^[\d.]+$/.test(expr) && !justEq) pv = fmt(calc(expr));
+  } catch (e) { pv = ''; }
+  el.textContent = pv;
+}
+function equals() {
+  if (!expr) return;
+  try {
+    var r = fmt(calc(expr));
+    hist.unshift({e: expr, r: r});
+    hist = hist.slice(0, 50);
+    try { localStorage.setItem('calc_h', JSON.stringify(hist)); } catch (e) {}
+    ans = parseFloat(r);
+    $('expr').textContent = expr + ' =';
+    $('res').className = '';
+    $('res').textContent = r;
+    expr = r;
+    justEq = true;
+  } catch (e) {
+    $('res').className = 'err';
+    $('res').textContent = 'خطأ';
+  }
+}
+
+function openHist() {
+  var box = $('hl');
+  box.innerHTML = '';
+  if (!hist.length) box.textContent = 'لا يوجد سجل بعد';
+  hist.forEach(function (h) {
+    var d = document.createElement('div');
+    d.className = 'h';
+    d.innerHTML = '<small></small><span></span>';
+    d.firstChild.textContent = h.e;
+    d.lastChild.textContent = '= ' + h.r;
+    d.onclick = function () { expr = h.r; justEq = false; closeHist(); render(); };
+    box.appendChild(d);
+  });
+  $('hist').className = 'on';
+}
+function closeHist() { $('hist').className = ''; }
+function clearHist() {
+  hist = [];
+  try { localStorage.removeItem('calc_h'); } catch (e) {}
+  openHist();
+}
+
+document.addEventListener('keydown', function (e) {
+  var k = e.key;
+  if (/^[0-9.()+^!%]$/.test(k)) press(k);
+  else if (k === '-') press('−');
+  else if (k === '*') press('×');
+  else if (k === '/') { e.preventDefault(); press('÷'); }
+  else if (k === 'Enter' || k === '=') press('EQ');
+  else if (k === 'Backspace') press('DEL');
+  else if (k === 'Escape') press('AC');
+});
+render();
+</script>
+</body>
+</html>
