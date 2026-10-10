@@ -35,7 +35,7 @@ class _HomeState extends State<Home> {
 
   @override
   Widget build(BuildContext context) {
-        final pages = <Widget>[AppsScreen(), EditScreen(), BuildScreen(), KeysScreen()];
+    final pages = <Widget>[AppsScreen(), EditScreen(), BuildScreen(), KeysScreen()];
     return Scaffold(
       body: SafeArea(child: pages[index]),
       bottomNavigationBar: NavigationBar(
@@ -49,3 +49,5 @@ class _HomeState extends State<Home> {
         ],
       ),
     );
+  }
+} 
